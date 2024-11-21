@@ -1,13 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
-import WaveSurfer from "wavesurfer.js";
+import Graph from "./Graph"; // Import the Graph component
 
 function VoiceRecorder() {
   const [recording, setRecording] = useState(false);
   const [audioURLs, setAudioURLs] = useState([]);
   const [mediaRecorder, setMediaRecorder] = useState(null);
-  const [waveSurfers, setWaveSurfers] = useState([]); // Store WaveSurfer instances
-  const waveformRefs = useRef([]); // Store refs for waveform containers
   const [playingIndex, setPlayingIndex] = useState(null);
+  const [audioProgress, setAudioProgress] = useState([]); // To store audio playback data
 
   const startRecording = async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -35,53 +34,39 @@ function VoiceRecorder() {
     }
   };
 
-  const createWaveform = (url, index) => {
-    const waveSurfer = WaveSurfer.create({
-      container: waveformRefs.current[index],
-      waveColor: "#ccc",
-      progressColor: "#4f46e5",
-      cursorColor: "#4f46e5",
-      height: 80,
-      barWidth: 2,
-      barHeight: 1,
-      responsive: true,
-    });
-    waveSurfer.load(url);
-    return waveSurfer;
+  const playPauseRecording = (index) => {
+    const audioElement = document.getElementById(`audio-${index}`);
+    if (audioElement.paused) {
+      audioElement.play();
+      setPlayingIndex(index);
+      // Update progress of audio playback
+      trackAudioProgress(audioElement, index);
+    } else {
+      audioElement.pause();
+      setPlayingIndex(null);
+    }
   };
 
-  useEffect(() => {
-    // Initialize waveforms for each audio recording
-    const newWaveSurfers = audioURLs.map((audioData, index) => {
-      return createWaveform(audioData.url, index);
-    });
-    setWaveSurfers(newWaveSurfers);
-
-    return () => {
-      // Cleanup WaveSurfer instances on unmount
-      newWaveSurfers.forEach((waveSurfer) => waveSurfer.destroy());
-    };
-  }, [audioURLs]);
-
-  const playPauseRecording = (index) => {
-    if (playingIndex !== null) {
-      waveSurfers[playingIndex].pause();
-    }
-    if (playingIndex === index) {
-      setPlayingIndex(null); // Stop playback
-    } else {
-      waveSurfers[index].playPause(); // Toggle play/pause for selected recording
-      setPlayingIndex(index);
-    }
+  const trackAudioProgress = (audioElement, index) => {
+    const interval = setInterval(() => {
+      if (audioElement.ended) {
+        clearInterval(interval);
+        setPlayingIndex(null);
+      } else {
+        const progress = (audioElement.currentTime / audioElement.duration) * 100;
+        setAudioProgress((prev) => {
+          // Store progress only for the currently playing audio
+          const newProgress = [...prev];
+          newProgress[index] = progress;
+          return newProgress;
+        });
+      }
+    }, 100);
   };
 
   const deleteRecording = (index) => {
     setAudioURLs((prevURLs) => prevURLs.filter((_, i) => i !== index));
-    setWaveSurfers((prevWaveSurfers) => {
-      const updated = [...prevWaveSurfers];
-      updated[index].destroy();
-      return updated.filter((_, i) => i !== index);
-    });
+    setAudioProgress((prevProgress) => prevProgress.filter((_, i) => i !== index)); // Remove the deleted recording's progress
     if (index === playingIndex) {
       setPlayingIndex(null);
     }
@@ -132,8 +117,8 @@ function VoiceRecorder() {
                 </div>
               </div>
 
-              {/* Waveform Container */}
-              <div ref={(el) => (waveformRefs.current[index] = el)} className="mt-2"></div>
+              {/* Audio Player */}
+              <audio id={`audio-${index}`} src={audioData.url} />
 
               {/* Download Button */}
               <a
@@ -145,6 +130,13 @@ function VoiceRecorder() {
               </a>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Graph Component */}
+      {audioProgress.length > 0 && (
+        <div className="mt-12 w-full max-w-2xl">
+          <Graph data={audioProgress} />
         </div>
       )}
     </div>
